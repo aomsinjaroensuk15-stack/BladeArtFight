@@ -1604,7 +1604,6 @@ function startMode(m) {
   busy = false;
   drawTitle.textContent = m === 'friend' ? 'PLAYER 1 -- DRAW YOUR BLADE' : 'DRAW YOUR BLADE';
   dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-  makeRandomBlade(drawCanvas);
   preview();
   show(drawScreen);
 }
@@ -1618,7 +1617,6 @@ function fight() {
     whoseTurn = 2;
     drawTitle.textContent = 'PLAYER 2 -- DRAW YOUR BLADE';
     dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-    makeRandomBlade(drawCanvas);
     preview();
     return;
   }
@@ -1717,7 +1715,6 @@ document.getElementById('btnRematch').addEventListener('click', () => {
 });
 
 /* ---------- boot ---------- */
-makeRandomBlade(drawCanvas);
 preview();
 </script>
 </body>
