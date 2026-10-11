@@ -299,6 +299,7 @@ function analyzeBlade(canvas) {
     bal:    symmetry,
     r:      Math.max(26, Math.min(78, maxR)),
     wobble: Math.min(1, Math.hypot(mx - cx, my - cy) / (W * 0.3)),
+    mx, my,
   };
 }
 
@@ -395,9 +396,9 @@ const Battle = (() => {
 
   function makeBlade(stats, x, y) {
     const b = Bodies.circle(x, y, stats.r, {
-      label: 'blade', restitution: 0.55, friction: 0.02, frictionAir: 0.006,
+      label: 'blade', restitution: 0.55, friction: 0.02, frictionAir: 0.004,
     });
-    b.plugin = { stats, dashCd: 60 + Math.random() * 100 };
+    b.plugin = { precess: Math.random() < 0.5 ? -1 : 1, precessCd: 60 + Math.random() * 120, nudge: 0, nudgeCd: 90 + Math.random() * 150, wobPh: Math.random() * 6 };
     return b;
   }
 
@@ -442,37 +443,71 @@ const Battle = (() => {
     }
   }
 
-  function steer(self, other, stats, key) {
-    if (spin[key] <= 0) return;
-    if (self.position.y < 0) return;
-    const d = Vector.sub(other.position, self.position);
-    const dist = Math.hypot(d.x, d.y) || 1;
-    let f = 0.11 * self.mass;
+  /* free beyblade movement: wide precessing orbits like a real top.
+     no homing -- the tops drift, curve, and clash when paths cross.
+     engagement comes from occasional attack nudges + the X-rail. */
+  function freeMove(self, other, stats, key) {
+    if (spin[key] <= 0) { clampSpeed(self, 0.4); return; }
+    if (self.position.y < 0) return;          // escaping through an exit
 
-    if (self.plugin.dashCd-- <= 0) {
-      self.plugin.dash = 14;
-      self.plugin.dashCd = 60 + Math.random() * 120;
+    const v = self.velocity, s = Math.hypot(v.x, v.y);
+
+    /* precession: constant gentle sideways push => circular orbits */
+    if (s > 0.1) {
+      const pf = 0.017 * self.mass * (0.3 + 0.7 * spin[key]);
+      Body.applyForce(self, self.position, {
+        x: (-v.y / s) * pf * self.plugin.precess,
+        y: ( v.x / s) * pf * self.plugin.precess,
+      });
     }
-    if (self.plugin.dash > 0) { f *= 2.2; self.plugin.dash--; }
-    if (dash[key] > 0) f *= 3.2;
-
-    Body.applyForce(self, self.position, { x: (d.x / dist) * f, y: (d.y / dist) * f });
-
-    if (stats.wobble > 0.05) {
-      const t = engine.timing.timestamp * 0.012 + (key === 'p' ? 0 : 2.1);
-      const side = { x: -d.y / dist, y: d.x / dist };
-      const wf = Math.sin(t) * stats.wobble * 0.03 * self.mass;
-      Body.applyForce(self, self.position, { x: side.x * wf, y: side.y * wf });
+    if (--self.plugin.precessCd <= 0) {
+      self.plugin.precess *= -1;
+      self.plugin.precessCd = 110 + Math.random() * 170;
     }
-    clampSpeed(self, dash[key] > 0 ? 9.5 : 4.6);
+
+    /* tiny random drift so no two orbits are the same */
+    Body.applyForce(self, self.position, {
+      x: (Math.random() - 0.5) * 0.010 * self.mass,
+      y: (Math.random() - 0.5) * 0.010 * self.mass,
+    });
+
+    /* attack nudge: every few seconds, briefly curve toward the enemy */
+    if (--self.plugin.nudgeCd <= 0) {
+      const d = Vector.sub(other.position, self.position);
+      if (Math.hypot(d.x, d.y) > 130) self.plugin.nudge = 26;
+      self.plugin.nudgeCd = 130 + Math.random() * 190;
+    }
+    if (self.plugin.nudge > 0) {
+      const d = Vector.sub(other.position, self.position);
+      const dist = Math.hypot(d.x, d.y) || 1;
+      Body.applyForce(self, self.position, { x: (d.x / dist) * 0.055 * self.mass, y: (d.y / dist) * 0.055 * self.mass });
+      self.plugin.nudge--;
+    }
+
+    /* during an Xtreme Dash the top actively charges the opponent */
+    if (dash[key] > 0) {
+      const d = Vector.sub(other.position, self.position);
+      const dist = Math.hypot(d.x, d.y) || 1;
+      Body.applyForce(self, self.position, { x: (d.x / dist) * 0.10 * self.mass, y: (d.y / dist) * 0.10 * self.mass });
+    }
+
+    /* wobble: unbalanced blades drift sideways as they spin */
+    if (stats.wobble > 0.05 && s > 0.1) {
+      const t = engine.timing.timestamp * 0.012 + self.plugin.wobPh;
+      const wf = Math.sin(t) * stats.wobble * 0.028 * self.mass;
+      Body.applyForce(self, self.position, { x: (-v.y / s) * wf, y: (v.x / s) * wf });
+    }
+
+    /* a top slows down as its spin dies */
+    clampSpeed(self, 5.4 * (0.25 + 0.75 * spin[key]) + (dash[key] > 0 ? 4.2 : 0));
   }
 
   function tick() {
     if (!running) return;
     handleRail(player, 'p');
     handleRail(enemy, 'e');
-    steer(player, enemy, pStats, 'p');
-    steer(enemy, player, eStats, 'e');
+    freeMove(player, enemy, pStats, 'p');
+    freeMove(enemy, player, eStats, 'e');
 
     dash.p = Math.max(0, dash.p - 1);
     dash.e = Math.max(0, dash.e - 1);
@@ -566,8 +601,8 @@ const Battle = (() => {
 
     player = makeBlade(ps, S / 2, S * 0.74);
     enemy  = makeBlade(es, S / 2, S * 0.26);
-    Body.setVelocity(player, { x: -2.6, y: 0 });
-    Body.setVelocity(enemy,  { x:  2.6, y: 0 });
+    Body.setVelocity(player, { x: -3.0, y: -1.6 });
+    Body.setVelocity(enemy,  { x:  3.0, y: 1.6 });
     Composite.add(engine.world, [...buildWalls(), player, enemy]);
 
     Events.on(engine, 'collisionStart', onCollision);
@@ -721,39 +756,143 @@ const R3D = (() => {
     scene.add(ground);
   }
 
+  /* ---- silhouette tracing: the blade becomes the EXACT drawn shape ---- */
+
+  function outlineLoops(canvas) {
+    const { mask, W, H } = getMask(canvas);
+    const edges = [];
+    const adj = new Map();
+    const key = (x, y) => x + ',' + y;
+    function addEdge(x1, y1, x2, y2) {
+      const idx = edges.length;
+      edges.push([x1, y1, x2, y2]);
+      for (const p of [[x1, y1], [x2, y2]]) {
+        const k = key(p[0], p[1]);
+        if (!adj.has(k)) adj.set(k, []);
+        adj.get(k).push(idx);
+      }
+    }
+    for (let y = 1; y < H - 1; y++)
+      for (let x = 1; x < W - 1; x++) {
+        if (!mask[y * W + x]) continue;
+        if (!mask[(y - 1) * W + x]) addEdge(x, y, x + 1, y);
+        if (!mask[(y + 1) * W + x]) addEdge(x, y + 1, x + 1, y + 1);
+        if (!mask[y * W + x - 1]) addEdge(x, y, x, y + 1);
+        if (!mask[y * W + x + 1]) addEdge(x + 1, y, x + 1, y + 1);
+      }
+    const used = new Set();
+    const loops = [];
+    for (let i = 0; i < edges.length; i++) {
+      if (used.has(i)) continue;
+      used.add(i);
+      const pts = [[edges[i][0], edges[i][1]]];
+      let cx = edges[i][2], cy = edges[i][3];
+      pts.push([cx, cy]);
+      let guard = 0;
+      while (guard++ < 30000 && !(cx === pts[0][0] && cy === pts[0][1])) {
+        const nexts = (adj.get(key(cx, cy)) || []).filter(j => !used.has(j));
+        if (!nexts.length) break;
+        const j = nexts[0];
+        used.add(j);
+        const e = edges[j];
+        if (e[0] === cx && e[1] === cy) { cx = e[2]; cy = e[3]; }
+        else { cx = e[0]; cy = e[1]; }
+        pts.push([cx, cy]);
+      }
+      if (pts.length > 10) loops.push(simplify(pts));
+    }
+    return loops.filter(l => Math.abs(polyArea(l)) > 120);
+  }
+
+  function simplify(pts) {
+    const out = [];
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const a = pts[(i - 1 + n) % n], b = pts[i], c = pts[(i + 1) % n];
+      const cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+      if (Math.abs(cross) > 0.01) out.push(b);
+    }
+    return out.length >= 3 ? out : pts;
+  }
+
+  function polyArea(pts) {
+    let a = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length];
+      a += p[0] * q[1] - q[0] * p[1];
+    }
+    return a / 2;
+  }
+
+  function pointIn(pt, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if (((yi > pt[1]) !== (yj > pt[1])) &&
+          (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+
+  /* build the top: the drawn silhouette(s) extruded into 3D,
+     spinning around the ink's centre of mass */
   function buildTop(artCanvas, color, stats) {
     const g = new THREE.Group();
-    const r = stats.r * 1.12;                    // slightly chunkier
 
-    const bladeMat = new THREE.MeshStandardMaterial({
-      map: artTexture(artCanvas, color), roughness: 0.35, metalness: 0.3,
-    });
-    const sideMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(color), roughness: 0.3, metalness: 0.45,
-    });
-    const blade = new THREE.Mesh(
-      new THREE.CylinderGeometry(r, r * 0.88, 30, 64),
-      [sideMat, bladeMat, sideMat]
-    );
-    blade.position.y = 50;
-    blade.castShadow = true;
+    const artTex = artTexture(artCanvas, color);
+    artTex.wrapS = artTex.wrapT = THREE.RepeatWrapping;
+    artTex.repeat.set(1 / 320, 1 / 320);   // cap UVs are raw canvas px
+    artTex.flipY = false;
+    artTex.anisotropy = 4;
+    const capMat = new THREE.MeshStandardMaterial({ map: artTex, roughness: 0.35, metalness: 0.3 });
+    const sideMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: 0.3, metalness: 0.45 });
+
+    const spinGroup = new THREE.Group();
+    const ox = (stats.mx || 160), oy = (stats.my || 160);
+
+    const loops = outlineLoops(artCanvas)
+      .map(pts => ({ pts, area: Math.abs(polyArea(pts)) }))
+      .sort((a, b) => b.area - a.area);
+
+    /* loops inside bigger loops become real holes (donut blades!) */
+    const roots = [];
+    for (const o of loops) {
+      const host = loops.find(x => x !== o && x.area > o.area && pointIn(o.pts[0], x.pts));
+      if (host) (host.holes = host.holes || []).push(o.pts);
+      else roots.push(o);
+    }
+
+    for (const o of roots.slice(0, 12)) {
+      const shape = new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0], p[1])));
+      for (const h of (o.holes || []))
+        shape.holes.push(new THREE.Path(h.slice().reverse().map(p => new THREE.Vector2(p[0], p[1]))));
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: 20, bevelEnabled: true, bevelThickness: 8,
+        bevelSize: 5, bevelSegments: 2, curveSegments: 3,
+      });
+      const mesh = new THREE.Mesh(geo, [capMat, sideMat]);
+      mesh.castShadow = true;
+      mesh.rotation.x = Math.PI / 2;         // lay flat; canvas y -> world z
+      mesh.position.set(-ox, 46, -oy);       // spin around centre of mass
+      spinGroup.add(mesh);
+    }
 
     const ratchet = new THREE.Mesh(
-      new THREE.CylinderGeometry(r * 0.5, r * 0.56, 16, 32),
+      new THREE.CylinderGeometry(20, 23, 16, 32),
       new THREE.MeshStandardMaterial({ color: 0x2d3436, roughness: 0.5, metalness: 0.4 })
     );
-    ratchet.position.y = 26;
+    ratchet.position.y = 25;
     ratchet.castShadow = true;
 
     const tip = new THREE.Mesh(
-      new THREE.ConeGeometry(13, 22, 24),
+      new THREE.ConeGeometry(12, 22, 24),
       new THREE.MeshStandardMaterial({ color: 0x8395a7, roughness: 0.25, metalness: 0.85 })
     );
     tip.rotation.x = Math.PI;
     tip.position.y = 9;
 
-    g.add(blade, ratchet, tip);
-    g.userData = { blade, bladeMat, sideMat };
+    g.add(spinGroup, ratchet, tip);
+    g.userData = { spin: spinGroup, capMat, sideMat };
     return g;
   }
 
@@ -797,7 +936,7 @@ const R3D = (() => {
     if (!st) return;
     mesh.position.x = st.x - S / 2;
     mesh.position.z = st.y - S / 2;
-    mesh.userData.blade.rotation.y += dir * st.spin * 2.2;
+    mesh.userData.spin.rotation.y += dir * st.spin * 2.2;
 
     mesh.rotation.x = Math.sin(t * 0.021) * stats.wobble * 0.22;
     mesh.rotation.z = Math.cos(t * 0.017) * stats.wobble * 0.22;
@@ -805,11 +944,10 @@ const R3D = (() => {
     const targetY = st.dash ? 34 + Math.sin(t * 0.02) * 6 : 0;
     mesh.position.y += (targetY - mesh.position.y) * 0.2;
     if (st.dash) {
-      mesh.userData.bladeMat.emissive = mesh.userData.bladeMat.emissive || new THREE.Color();
-      mesh.userData.bladeMat.emissive.setHex(0x2dffd8);
-      mesh.userData.bladeMat.emissiveIntensity = 0.75;
+      mesh.userData.capMat.emissive.setHex(0x2dffd8);
+      mesh.userData.capMat.emissiveIntensity = 0.75;
     } else {
-      mesh.userData.bladeMat.emissiveIntensity = 0;
+      mesh.userData.capMat.emissiveIntensity = 0;
     }
   }
 
