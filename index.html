@@ -75,16 +75,17 @@ h1 span { color: #e17055; }
 #drawWrap {
   width: min(70vw, 320px); height: min(70vw, 320px);
   border-radius: 50%;
-  background: #f5f7fa;
-  box-shadow: 0 10px 30px rgba(45,52,54,.18), inset 0 0 0 3px #b2bec3;
+  background: #0d1117;
+  box-shadow: 0 10px 30px rgba(45,52,54,.35), inset 0 0 0 3px #39424e, 0 0 26px rgba(9,132,227,.25);
   display: flex; align-items: center; justify-content: center;
 }
 #drawCanvas {
   width: 88%; height: 88%;
   border-radius: 50%;
   background:
-    radial-gradient(circle, transparent 64%, rgba(9,132,227,.10) 65%, transparent 66%),
-    radial-gradient(circle, transparent 31%, rgba(9,132,227,.10) 32%, transparent 33%);
+    radial-gradient(circle, transparent 63%, rgba(255,255,255,.16) 65%, transparent 66%),
+    radial-gradient(circle, transparent 30%, rgba(255,255,255,.16) 32%, transparent 33%),
+    #0d1117;
   touch-action: none;
   cursor: crosshair;
 }
@@ -636,6 +637,32 @@ const Battle = (() => {
     Body.setAngularVelocity(enemy,  0.36 * spin.e);
 
     Engine.update(engine, 1000 / 60);
+
+    /* GRIND: while the blades touch, HP and spin tick down gradually.
+       longer contact = more damage, like real tops chewing each other */
+    const rr = pStats.r + eStats.r;
+    const gdx = enemy.position.x - player.position.x;
+    const gdy = enemy.position.y - player.position.y;
+    const gd = Math.hypot(gdx, gdy);
+    if (gd < rr + 8) {
+      const rvx = player.velocity.x - enemy.velocity.x;
+      const rvy = player.velocity.y - enemy.velocity.y;
+      const gs = Math.hypot(rvx, rvy);
+      if (gs > 0.6) {
+        const pDash = dash.p > 0, eDash = dash.e > 0;
+        hp.p -= Math.min(1.1, eStats.atk * gs * 0.0016 * (eDash ? 2.2 : 1));
+        hp.e -= Math.min(1.1, pStats.atk * gs * 0.0016 * (pDash ? 2.2 : 1));
+        spin.p = Math.max(0, spin.p - gs * 0.0012);
+        spin.e = Math.max(0, spin.e - gs * 0.0012);
+        const midX = (player.position.x + enemy.position.x) / 2;
+        const midY = (player.position.y + enemy.position.y) / 2;
+        if (engine.timing.timestamp % 90 < 16 && window.impactFX)
+          window.impactFX(midX, midY, Math.min(1, gs / 8));
+        if (engine.timing.timestamp % 300 < 16 && window.blip)
+          window.blip(0.25);
+      }
+    }
+
     HUD.update(hp, spin);
     if (!checkEnd()) raf = requestAnimationFrame(tick);
   }
@@ -693,16 +720,17 @@ const Battle = (() => {
       const aDash = (a === player ? dash.p : dash.e) > 0;
       const bDash = (b === player ? dash.p : dash.e) > 0;
 
-      const dmgToA = Math.min(30, b.plugin.statsRef.atk * speed * 0.028 * (bDash ? 2.2 : 1));
-      const dmgToB = Math.min(30, a.plugin.statsRef.atk * speed * 0.028 * (aDash ? 2.2 : 1));
+      /* impact shock: small chunk. sustained damage comes from grinding */
+      const dmgToA = Math.min(8, b.plugin.statsRef.atk * speed * 0.008 * (bDash ? 2.2 : 1));
+      const dmgToB = Math.min(8, a.plugin.statsRef.atk * speed * 0.008 * (aDash ? 2.2 : 1));
       hp[a === player ? 'p' : 'e'] -= dmgToA;
       hp[b === player ? 'p' : 'e'] -= dmgToB;
 
       if (bDash) Body.setVelocity(a, { x: a.velocity.x + b.velocity.x * 0.9, y: a.velocity.y + b.velocity.y * 0.9 });
       if (aDash) Body.setVelocity(b, { x: b.velocity.x + a.velocity.x * 0.9, y: b.velocity.y + a.velocity.y * 0.9 });
 
-      spin.p = Math.max(0, spin.p - speed * 0.006);
-      spin.e = Math.max(0, spin.e - speed * 0.006);
+      spin.p = Math.max(0, spin.p - speed * 0.003);
+      spin.e = Math.max(0, spin.e - speed * 0.003);
 
       /* impact FX at the midpoint */
       if (window.impactFX) window.impactFX(
