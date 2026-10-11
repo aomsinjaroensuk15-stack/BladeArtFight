@@ -1143,8 +1143,8 @@ const R3D = (() => {
       new THREE.Vector3(-S / 2, 0, -S / 2), new THREE.Vector3(S / 2, 0, -S / 2),
       new THREE.Vector3(-S / 2, 0,  S / 2), new THREE.Vector3(S / 2, 0,  S / 2),
     ];
-    camDist = 900;
-    for (let i = 0; i < 50; i++) {
+    camDist = 1600;
+    for (let i = 0; i < 60; i++) {
       camera.position.copy(CAM_DIR).multiplyScalar(camDist);
       camera.lookAt(0, 0, -30);
       camera.updateMatrixWorld();
@@ -1154,9 +1154,10 @@ const R3D = (() => {
         const ndc = c.clone().project(camera);
         maxAbs = Math.max(maxAbs, Math.abs(ndc.x), Math.abs(ndc.y));
       }
-      if (maxAbs < 0.97) break;
-      camDist *= 1.06;
+      if (maxAbs <= 0.60) break;
+      camDist *= 0.94;
     }
+    camDist = Math.max(camDist, 420);
   }
 
   function camBasePos() {
@@ -1210,9 +1211,9 @@ const R3D = (() => {
       const a = (1 - k) * Math.PI * 2;
       const F = camBasePos();
       camera.position.set(
-        Math.sin(a) * F.z,
-        F.y * 1.02 + Math.sin(k * Math.PI) * 60,
-        Math.cos(a) * F.z
+        Math.sin(a) * F.z * 1.18,
+        F.y * 1.05 + Math.sin(k * Math.PI) * 60,
+        Math.cos(a) * F.z * 1.18
       );
       camera.fov = BASE_FOV + 6 * (1 - k);
       camera.updateProjectionMatrix();
@@ -1237,13 +1238,13 @@ const R3D = (() => {
       const midX = st.player && st.enemy ? ((st.player.x + st.enemy.x) / 2 - S / 2) * 0.9 : 0;
       const midZ = st.player && st.enemy ? ((st.player.y + st.enemy.y) / 2 - S / 2) * 0.9 : 0;
       camera.position.set(
-        F.x + midX * 0.12 + swayX + (Math.random() - 0.5) * m * 10,
+        F.x + midX * 0.30 + swayX + (Math.random() - 0.5) * m * 10,
         F.y + (Math.random() - 0.5) * m * 8,
-        F.z + midZ * 0.10 + swayZ + (Math.random() - 0.5) * m * 10
+        F.z + midZ * 0.22 + swayZ + (Math.random() - 0.5) * m * 10
       );
       camera.fov = BASE_FOV + fovKick;
       camera.updateProjectionMatrix();
-      camera.lookAt(midX * 0.12, 0, -30 + midZ * 0.10);
+      camera.lookAt(midX * 0.30, 0, -30 + midZ * 0.22);
       shake *= 0.88;
     } else if (mode === 'end') {
       /* slow push-in on the winner; loser keels over */
