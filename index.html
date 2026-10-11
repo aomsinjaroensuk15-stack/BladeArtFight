@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BladeArtFight</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ============ DRAW SCREEN ============ -->
+  <section id="drawScreen" class="screen active">
+    <h1>BLADE<span>ART</span>FIGHT</h1>
+    <p class="tagline">Draw your blade. It fights for you.</p>
+
+    <div id="drawWrap">
+      <canvas id="drawCanvas" width="320" height="320"></canvas>
+    </div>
+
+    <div id="statPreview">
+      <div class="stat"><label>HP</label><div class="bar"><div id="barHp" class="fillb"></div></div><span class="hint">bigger drawing = tank</span></div>
+      <div class="stat"><label>ATK</label><div class="bar"><div id="barAtk" class="fillb"></div></div><span class="hint">spiky edge = ouch</span></div>
+      <div class="stat"><label>SPIN</label><div class="bar"><div id="barBal" class="fillb"></div></div><span class="hint">symmetric = spins long</span></div>
+    </div>
+
+    <div class="btnRow">
+      <button id="btnClear"  class="btn ghost">Clear</button>
+      <button id="btnRandom" class="btn ghost">&#127922; Random</button>
+      <button id="btnFight"  class="btn primary">FIGHT!</button>
+    </div>
+  </section>
+
+  <!-- ============ BATTLE SCREEN ============ -->
+  <section id="battleScreen" class="screen">
+    <div id="hud">
+      <div class="hpSide">
+        <div class="hpbar"><div id="hpPlayer" class="fill blue"></div></div>
+        <div class="spinbar"><div id="spinPlayer"></div></div>
+        <span class="name">YOU</span>
+      </div>
+      <div id="vs">VS</div>
+      <div class="hpSide right">
+        <div class="hpbar"><div id="hpEnemy" class="fill orange"></div></div>
+        <div class="spinbar"><div id="spinEnemy"></div></div>
+        <span class="name">BOT</span>
+      </div>
+    </div>
+
+    <div id="arenaWrap">
+      <div id="disc"><i class="ring" style="--r:66%"></i><i class="ring" style="--r:33%"></i></div>
+      <div id="arena"></div>
+    </div>
+
+    <div id="resultOverlay" class="hidden">
+      <h2 id="resultText"></h2>
+      <div class="btnRow">
+        <button id="btnRematch"   class="btn primary">Rematch</button>
+        <button id="btnNewBlade"  class="btn ghost">New Blade</button>
+      </div>
+    </div>
+  </section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+<script src="stats.js"></script>
+<script src="battle.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
