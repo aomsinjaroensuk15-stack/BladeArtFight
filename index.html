@@ -398,7 +398,7 @@ const Battle = (() => {
     const b = Bodies.circle(x, y, stats.r, {
       label: 'blade', restitution: 0.55, friction: 0.02, frictionAir: 0.004,
     });
-    b.plugin = { precess: Math.random() < 0.5 ? -1 : 1, precessCd: 60 + Math.random() * 120, nudge: 0, nudgeCd: 90 + Math.random() * 150, wobPh: Math.random() * 6 };
+    b.plugin = { precess: Math.random() < 0.5 ? -1 : 1, precessCd: 60 + Math.random() * 120, nudge: 0, nudgeCd: 90 + Math.random() * 150, curCd: 150, wobPh: Math.random() * 6, persona: personaOf(stats), mode: 'attack', modeCd: 300 };
     return b;
   }
 
@@ -443,18 +443,38 @@ const Battle = (() => {
     }
   }
 
-  /* free beyblade movement: wide precessing orbits like a real top.
-     no homing -- the tops drift, curve, and clash when paths cross.
-     engagement comes from occasional attack nudges + the X-rail. */
+  /* Beyblade-type personality, derived from the drawing's stats:
+     ATK dominant -> ATTACK  (fast, sharp turns, hunts contact)
+     BAL dominant -> STAMINA (cruises a ring around the middle)
+     HP dominant  -> DEFENSE (holds the centre of the stadium)
+     no dominant  -> BALANCE (alternates attack/stamina over time) */
+  function personaOf(stats) {
+    const aN = (stats.atk - 6) / 46, hN = (stats.hp - 90) / 130, bN = stats.bal;
+    const vals = [aN, hN, bN].sort((x, y) => y - x);
+    if (vals[0] < 0.25 || vals[0] - vals[1] < 0.08) return 'balance';
+    if (vals[0] === aN) return 'attack';
+    if (vals[0] === hN) return 'defense';
+    return 'stamina';
+  }
+
   function freeMove(self, other, stats, key) {
     if (spin[key] <= 0) { clampSpeed(self, 0.4); return; }
     if (self.position.y < 0) return;          // escaping through an exit
 
     const v = self.velocity, s = Math.hypot(v.x, v.y);
 
-    /* precession: constant gentle sideways push => circular orbits */
+    if (self.plugin.persona === 'balance') {
+      if (--self.plugin.modeCd <= 0) {
+        self.plugin.mode = self.plugin.mode === 'attack' ? 'stamina' : 'attack';
+        self.plugin.modeCd = 300 + Math.random() * 200;
+      }
+    }
+    const P = self.plugin.persona === 'balance' ? self.plugin.mode : self.plugin.persona;
+
+    /* precession: sideways push => curved paths. attack turns hardest */
+    const turnMul = P === 'attack' ? 2.3 : P === 'defense' ? 0.8 : 1.2;
     if (s > 0.1) {
-      const pf = 0.017 * self.mass * (0.3 + 0.7 * spin[key]);
+      const pf = 0.017 * turnMul * self.mass * (0.3 + 0.7 * spin[key]);
       Body.applyForce(self, self.position, {
         x: (-v.y / s) * pf * self.plugin.precess,
         y: ( v.x / s) * pf * self.plugin.precess,
@@ -471,23 +491,45 @@ const Battle = (() => {
       y: (Math.random() - 0.5) * 0.010 * self.mass,
     });
 
-    /* attack nudge: every few seconds, briefly curve toward the enemy */
-    if (--self.plugin.nudgeCd <= 0) {
-      const d = Vector.sub(other.position, self.position);
-      if (Math.hypot(d.x, d.y) > 130) self.plugin.nudge = 26;
-      self.plugin.nudgeCd = 130 + Math.random() * 190;
+    const d = Vector.sub(other.position, self.position);
+    const dist = Math.hypot(d.x, d.y) || 1;
+    let cap = 5.4;
+
+    if (P === 'attack') {
+      /* constant hunt + periodic hard charges => constant contact */
+      cap = 6.6;
+      Body.applyForce(self, self.position, { x: (d.x / dist) * 0.045 * self.mass, y: (d.y / dist) * 0.045 * self.mass });
+      if (--self.plugin.nudgeCd <= 0) { self.plugin.nudge = 30; self.plugin.nudgeCd = 90 + Math.random() * 120; }
+    } else if (P === 'defense') {
+      /* hold the centre in a tight circle; poke only when approached */
+      cap = 4.0;
+      const dc = Math.hypot(self.position.x - S / 2, self.position.y - S / 2) || 1;
+      const hf = dc > 130 ? 0.050 : 0.018;
+      Body.applyForce(self, self.position, {
+        x: ((S / 2 - self.position.x) / dc) * hf * self.mass,
+        y: ((S / 2 - self.position.y) / dc) * hf * self.mass,
+      });
+      if (dist < 220 && --self.plugin.curCd <= 0) { self.plugin.nudge = 22; self.plugin.curCd = 160 + Math.random() * 140; }
+    } else {
+      /* stamina: cruise a slow ring around the middle of the stadium */
+      cap = 5.0;
+      const t = engine.timing.timestamp * 0.0012 + self.plugin.wobPh;
+      const tx = S / 2 + Math.cos(t) * 210;
+      const ty = S / 2 + Math.sin(t) * 210;
+      const dx = tx - self.position.x, dy = ty - self.position.y;
+      const dd = Math.hypot(dx, dy) || 1;
+      Body.applyForce(self, self.position, { x: (dx / dd) * 0.030 * self.mass, y: (dy / dd) * 0.030 * self.mass });
+      if (dist > 140 && --self.plugin.curCd <= 0) { self.plugin.nudge = 22; self.plugin.curCd = 210 + Math.random() * 170; }
     }
+
+    /* a triggered nudge: brief curve toward the opponent */
     if (self.plugin.nudge > 0) {
-      const d = Vector.sub(other.position, self.position);
-      const dist = Math.hypot(d.x, d.y) || 1;
       Body.applyForce(self, self.position, { x: (d.x / dist) * 0.055 * self.mass, y: (d.y / dist) * 0.055 * self.mass });
       self.plugin.nudge--;
     }
 
     /* during an Xtreme Dash the top actively charges the opponent */
     if (dash[key] > 0) {
-      const d = Vector.sub(other.position, self.position);
-      const dist = Math.hypot(d.x, d.y) || 1;
       Body.applyForce(self, self.position, { x: (d.x / dist) * 0.10 * self.mass, y: (d.y / dist) * 0.10 * self.mass });
     }
 
@@ -499,7 +541,7 @@ const Battle = (() => {
     }
 
     /* a top slows down as its spin dies */
-    clampSpeed(self, 5.4 * (0.25 + 0.75 * spin[key]) + (dash[key] > 0 ? 4.2 : 0));
+    clampSpeed(self, cap * (0.25 + 0.75 * spin[key]) + (dash[key] > 0 ? 4.2 : 0));
   }
 
   function tick() {
@@ -623,7 +665,7 @@ const Battle = (() => {
     return { running, player: bs(player, 'p'), enemy: bs(enemy, 'e') };
   }
 
-  return { start, getState, arenaSize, S, EXIT_GAPS };
+  return { start, getState, arenaSize, S, EXIT_GAPS, personaOf };
 })();
 
 /* =================== 3. RENDER: Three.js 3D =================== */
@@ -1176,6 +1218,8 @@ function startMode(m) {
   show(drawScreen);
 }
 
+const TYPE_ICON = { attack: '\u2694\uFE0F', defense: '\u{1F6E1}\uFE0F', stamina: '\u{1F300}', balance: '\u2696\uFE0F' };
+
 function fight() {
   let pStats = analyzeBlade(drawCanvas);
 
@@ -1211,8 +1255,8 @@ function fight() {
   lastEnemyCanvas = cloneCanvas(enemyCanvas);
   lastEnemyStats = eStats;
 
-  nameLeft.textContent  = mode === 'friend' ? 'P1' : 'YOU';
-  nameRight.textContent = mode === 'friend' ? 'P2' : 'BOT';
+  nameLeft.textContent  = (mode === 'friend' ? 'P1' : 'YOU') + ' ' + TYPE_ICON[Battle.personaOf(pStats)];
+  nameRight.textContent = (mode === 'friend' ? 'P2' : 'BOT') + ' ' + TYPE_ICON[Battle.personaOf(eStats)];
 
   resultOverlay.classList.add('hidden');
   show(battleScreen);
