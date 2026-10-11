@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>BladeArtFight</title>
 <style>
+/* ============================================================
+   BladeArtFight v2 - clean rewrite
+   styles + screens with smooth transitions
+   ============================================================ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
@@ -18,15 +22,24 @@ html, body {
   touch-action: manipulation;
 }
 
+/* ---------- screens: fade + scale transitions ---------- */
 .screen {
   position: fixed; inset: 0;
-  display: none;
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(.97) translateY(12px);
+  transition: opacity .38s ease, transform .38s ease;
 }
-.screen.active { display: flex; }
+.screen.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
 
 #battleScreen {
   background:
@@ -48,11 +61,11 @@ h1 span { color: #e17055; }
   border: none; border-radius: 16px;
   padding: 18px 20px; font-size: 17px; font-weight: 900;
   cursor: pointer; text-align: left;
-  transition: transform .08s, box-shadow .08s;
+  transition: transform .1s, box-shadow .1s;
   box-shadow: 0 5px 0 rgba(0,0,0,.18);
 }
-.modeBtn:active { transform: scale(.95); }
 .modeBtn small { display: block; font-weight: 600; font-size: 11px; opacity: .85; margin-top: 3px; }
+.modeBtn:active { transform: scale(.95); }
 .modeBtn.bot    { background: linear-gradient(135deg,#0984e3,#74b9ff); color: #fff; }
 .modeBtn.friend { background: linear-gradient(135deg,#e17055,#fab1a0); color: #fff; }
 
@@ -98,7 +111,7 @@ h1 span { color: #e17055; }
 .btn.ghost { background: #fff; color: #57606f; box-shadow: 0 4px 0 #b9c0c8; }
 .btn.ghost:active { box-shadow: 0 1px 0 #b9c0c8; }
 
-/* ---------- battle ---------- */
+/* ---------- battle HUD ---------- */
 #hud {
   width: min(96vw, 480px);
   display: flex; align-items: center; gap: 10px;
@@ -126,6 +139,26 @@ h1 span { color: #e17055; }
 }
 #arenaWrap canvas { display: block; }
 
+/* ---------- countdown ---------- */
+#countOverlay {
+  position: absolute; left: 0; right: 0; top: 42%;
+  display: flex; justify-content: center;
+  pointer-events: none; z-index: 9;
+}
+#countText {
+  font-size: 92px; font-weight: 900; font-style: italic;
+  color: #2d3436; letter-spacing: 4px;
+  text-shadow: 0 6px 0 rgba(255,255,255,.8), 0 10px 28px rgba(45,52,54,.35);
+  opacity: 0;
+}
+#countText.pop { animation: countPop .85s ease-out forwards; }
+@keyframes countPop {
+  0%   { opacity: 0; transform: scale(.2) rotate(-6deg); }
+  30%  { opacity: 1; transform: scale(1.15) rotate(2deg); }
+  75%  { opacity: 1; transform: scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+
 #dashFlash {
   position: fixed; left: 50%; top: 38%;
   transform: translate(-50%,-50%) rotate(-6deg);
@@ -143,14 +176,22 @@ h1 span { color: #e17055; }
   100% { opacity: 0; transform: translate(-50%,-60%) rotate(-6deg) scale(1); }
 }
 
+/* ---------- result overlay: slide + fade in ---------- */
 #resultOverlay {
   position: absolute; inset: 0; z-index: 10;
   background: rgba(45,52,54,.55);
   display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 12px;
   backdrop-filter: blur(2px);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity .45s ease, transform .45s ease;
 }
-#resultOverlay.hidden { display: none; }
+#resultOverlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(26px);
+}
 #resultText {
   font-size: 42px; font-weight: 900; font-style: italic; letter-spacing: 3px;
   color: #fff; text-shadow: 0 6px 24px rgba(0,0,0,.45), 3px 3px 0 rgba(0,0,0,.25);
@@ -218,6 +259,7 @@ h1 span { color: #e17055; }
 
     <div id="arenaWrap"></div>
 
+    <div id="countOverlay"><div id="countText"></div></div>
     <div id="dashFlash" class="hidden">XTREME DASH!</div>
 
     <div id="resultOverlay" class="hidden">
@@ -237,12 +279,17 @@ h1 span { color: #e17055; }
 <script>
 'use strict';
 /* =========================================================
-   BladeArtFight - single-file build
-   stats -> battle (Matter.js 2D physics) -> render3d (Three.js)
-   -> main glue. VS BOT and VS FRIEND (pass & play) modes.
+   BladeArtFight v2 - clean rewrite, single file
+   sections:
+     1. UTILS   - drawing analysis (stats), silhouette masks
+     2. BATTLE  - Matter.js physics, beyblade-type AI, X-rail,
+                  Xtreme Dash, exits, launch/intro support
+     3. R3D     - Three.js stadium, tops (blade+ratchet+bit),
+                  camera direction, intro/end sequences, sparks
+     4. MAIN    - UI glue, screens, HUD, countdown, sounds
    ========================================================= */
 
-/* =================== 1. STATS: drawing -> build =================== */
+/* =================== 1. UTILS =================== */
 
 function getMask(canvas) {
   const ctx = canvas.getContext('2d');
@@ -256,6 +303,7 @@ function getMask(canvas) {
   return { mask, count, W, H };
 }
 
+/* drawing -> stats: your art IS the build */
 function analyzeBlade(canvas) {
   const { mask, count, W, H } = getMask(canvas);
   if (count < 30) return null;
@@ -282,6 +330,7 @@ function analyzeBlade(canvas) {
          (!mask[y * W + x - 1] || !mask[y * W + x + 1] ||
           !mask[(y - 1) * W + x] || !mask[(y + 1) * W + x])) per++;
 
+  /* spikiness: perimeter^2 / (4 pi area); 1 = perfect circle */
   const roundness = (per * per) / (4 * Math.PI * count);
   const spikiness = Math.min(1, Math.max(0, roundness - 1) / 2.2);
 
@@ -303,6 +352,7 @@ function analyzeBlade(canvas) {
   };
 }
 
+/* random blade generator (bot + lazy players) */
 function makeRandomBlade(canvas) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -311,7 +361,7 @@ function makeRandomBlade(canvas) {
   const cx = canvas.width / 2, cy = canvas.height / 2;
   const kind = Math.floor(Math.random() * 3);
 
-  if (kind === 0) {
+  if (kind === 0) {                        // star
     const spikes = 5 + Math.floor(Math.random() * 5);
     const R = 110 + Math.random() * 25;
     const r = R * (0.35 + Math.random() * 0.25);
@@ -322,7 +372,7 @@ function makeRandomBlade(canvas) {
       ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
     }
     ctx.closePath(); ctx.fill();
-  } else if (kind === 1) {
+  } else if (kind === 1) {                 // blob cluster
     const n = 5 + Math.floor(Math.random() * 4);
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2;
@@ -332,7 +382,7 @@ function makeRandomBlade(canvas) {
       ctx.fill();
     }
     ctx.beginPath(); ctx.arc(cx, cy, 30, 0, 7); ctx.fill();
-  } else {
+  } else {                                 // jagged saw disc
     const R = 100 + Math.random() * 25, n = 26;
     ctx.beginPath();
     for (let i = 0; i <= n; i++) {
@@ -351,23 +401,25 @@ function cloneCanvas(src) {
   return c;
 }
 
-/* =================== 2. BATTLE: Matter.js physics =================== */
+/* =================== 2. BATTLE (physics) =================== */
 
 const Battle = (() => {
   const { Engine, Bodies, Body, Composite, Events, Vector } = Matter;
 
-  const S = 1000;
+  const S = 1000;                       // stadium side, world units
   const WALL_T = 60;
-  const RAIL_W = 62;
+  const RAIL_W = 62;                    // X-rail catch width
   const DASH_TICKS = 45;
+  /* exit gaps in the north wall: two Over Zones + wide Xtreme Zone */
   const EXIT_GAPS = [ [175, 265], [415, 585], [735, 825] ];
+  /* the X-Celerator rails, corner to corner */
   const RAILS = [
     { ax: 70,  ay: 70,  bx: 930, by: 930 },
     { ax: 930, ay: 70,  bx: 70,  by: 930 },
   ];
 
   let engine = null, raf = null;
-  let running = false, inited = false;
+  let running = false, inited = false, frozen = true;
   let player = null, enemy = null;
   let pStats = null, eStats = null;
   let hp = { p: 0, e: 0 };
@@ -377,6 +429,18 @@ const Battle = (() => {
 
   const arenaSize = () =>
     Math.floor(Math.min(window.innerWidth - 8, window.innerHeight - 158));
+
+  /* Beyblade-type personality from the drawing's stats:
+     ATK dominant -> ATTACK  |  HP dominant -> DEFENSE
+     BAL dominant -> STAMINA |  mixed        -> BALANCE */
+  function personaOf(stats) {
+    const aN = (stats.atk - 6) / 46, hN = (stats.hp - 90) / 130, bN = stats.bal;
+    const vals = [aN, hN, bN].sort((x, y) => y - x);
+    if (vals[0] < 0.25 || vals[0] - vals[1] < 0.08) return 'balance';
+    if (vals[0] === aN) return 'attack';
+    if (vals[0] === hN) return 'defense';
+    return 'stamina';
+  }
 
   function buildWalls() {
     const opt = { isStatic: true, restitution: 0.6, render: { visible: false } };
@@ -394,11 +458,21 @@ const Battle = (() => {
     return walls;
   }
 
+  /* bit type changes how the top glides: flat attack bits slip fast,
+     ball/needle defense+stamina bits are calmer */
   function makeBlade(stats, x, y) {
+    const P = personaOf(stats);
+    const glide = { attack: 0.003, balance: 0.004, stamina: 0.005, defense: 0.006 }[P];
+    const bounce = { attack: 0.6, balance: 0.5, stamina: 0.55, defense: 0.45 }[P];
     const b = Bodies.circle(x, y, stats.r, {
-      label: 'blade', restitution: 0.55, friction: 0.02, frictionAir: 0.004,
+      label: 'blade', restitution: bounce, friction: 0.02, frictionAir: glide,
     });
-    b.plugin = { precess: Math.random() < 0.5 ? -1 : 1, precessCd: 60 + Math.random() * 120, nudge: 0, nudgeCd: 90 + Math.random() * 150, curCd: 150, wobPh: Math.random() * 6, persona: personaOf(stats), mode: 'attack', modeCd: 300 };
+    b.plugin = {
+      persona: P, mode: 'attack', modeCd: 300,
+      precess: Math.random() < 0.5 ? -1 : 1, precessCd: 60 + Math.random() * 120,
+      nudge: 0, nudgeCd: 90 + Math.random() * 150,
+      curCd: 150, wobPh: Math.random() * 6,
+    };
     return b;
   }
 
@@ -407,6 +481,8 @@ const Battle = (() => {
     if (s > max) Body.setVelocity(b, { x: (v.x / s) * max, y: (v.y / s) * max });
   }
 
+  /* ---------- X-rail: gears catch the rail, accelerate to centre,
+     hop off with an XTREME DASH ---------- */
   function distToRails(p) {
     let best = null;
     for (const r of RAILS) {
@@ -422,7 +498,7 @@ const Battle = (() => {
   }
 
   function handleRail(b, key) {
-    if (spin[key] <= 0) return;
+    if (frozen || spin[key] <= 0) return;
     const ri = distToRails(b.position);
     if (!ri) return;
     const dir = {
@@ -435,7 +511,7 @@ const Battle = (() => {
       y: (dir.y / n) * 0.30 * b.mass,
     });
     clampSpeed(b, 8.5);
-    spin[key] = Math.min(1, spin[key] + 0.004);
+    spin[key] = Math.min(1, spin[key] + 0.004);     // gears feed spin back
     const L = Math.hypot(S / 2 - b.position.x, S / 2 - b.position.y);
     if (L < 150 && dash[key] <= 0) {
       dash[key] = DASH_TICKS;
@@ -443,20 +519,7 @@ const Battle = (() => {
     }
   }
 
-  /* Beyblade-type personality, derived from the drawing's stats:
-     ATK dominant -> ATTACK  (fast, sharp turns, hunts contact)
-     BAL dominant -> STAMINA (cruises a ring around the middle)
-     HP dominant  -> DEFENSE (holds the centre of the stadium)
-     no dominant  -> BALANCE (alternates attack/stamina over time) */
-  function personaOf(stats) {
-    const aN = (stats.atk - 6) / 46, hN = (stats.hp - 90) / 130, bN = stats.bal;
-    const vals = [aN, hN, bN].sort((x, y) => y - x);
-    if (vals[0] < 0.25 || vals[0] - vals[1] < 0.08) return 'balance';
-    if (vals[0] === aN) return 'attack';
-    if (vals[0] === hN) return 'defense';
-    return 'stamina';
-  }
-
+  /* ---------- free type-based movement (no homing) ---------- */
   function freeMove(self, other, stats, key) {
     if (spin[key] <= 0) { clampSpeed(self, 0.4); return; }
     if (self.position.y < 0) return;          // escaping through an exit
@@ -546,6 +609,19 @@ const Battle = (() => {
 
   function tick() {
     if (!running) return;
+
+    if (frozen) {
+      /* intro: tops spin in place at the launch zones, no forces */
+      Body.setVelocity(player, { x: 0, y: 0 });
+      Body.setVelocity(enemy, { x: 0, y: 0 });
+      Body.setAngularVelocity(player, -0.36);
+      Body.setAngularVelocity(enemy,  0.36);
+      Engine.update(engine, 1000 / 60);
+      HUD.update(hp, spin);
+      raf = requestAnimationFrame(tick);
+      return;
+    }
+
     handleRail(player, 'p');
     handleRail(enemy, 'e');
     freeMove(player, enemy, pStats, 'p');
@@ -565,6 +641,7 @@ const Battle = (() => {
   }
 
   function checkEnd() {
+    /* exits: crossing the north wall plane through a gap */
     for (const [b, key] of [[player, 'p'], [enemy, 'e']]) {
       if (b.position.y < -30) {
         const x = b.position.x;
@@ -590,7 +667,8 @@ const Battle = (() => {
     if (raf) cancelAnimationFrame(raf);
     HUD.update(hp, spin);
     if (window.battleShake) window.battleShake(14);
-    setTimeout(() => { cleanup(); if (onEnd) onEnd(result); }, 1100);
+    if (window.onMatchEnd) window.onMatchEnd(result);      // 3D celebration starts now
+    setTimeout(() => { cleanup(); if (onEnd) onEnd(result); }, 1600);
     return true;
   }
 
@@ -604,6 +682,8 @@ const Battle = (() => {
     inited = false;
   }
 
+  /* damage on contact; a dashing attacker deals bonus damage
+     and launches the victim (that is how exits are scored) */
   function onCollision(ev) {
     for (const pair of ev.pairs) {
       const a = pair.bodyA, b = pair.bodyB;
@@ -613,8 +693,8 @@ const Battle = (() => {
       const aDash = (a === player ? dash.p : dash.e) > 0;
       const bDash = (b === player ? dash.p : dash.e) > 0;
 
-      const dmgToA = Math.min(60, b.plugin.stats.atk * speed * 0.085 * (bDash ? 2.2 : 1));
-      const dmgToB = Math.min(60, a.plugin.stats.atk * speed * 0.085 * (aDash ? 2.2 : 1));
+      const dmgToA = Math.min(60, b.plugin.statsRef.atk * speed * 0.085 * (bDash ? 2.2 : 1));
+      const dmgToB = Math.min(60, a.plugin.statsRef.atk * speed * 0.085 * (aDash ? 2.2 : 1));
       hp[a === player ? 'p' : 'e'] -= dmgToA;
       hp[b === player ? 'p' : 'e'] -= dmgToB;
 
@@ -624,11 +704,18 @@ const Battle = (() => {
       spin.p = Math.max(0, spin.p - speed * 0.012);
       spin.e = Math.max(0, spin.e - speed * 0.012);
 
+      /* impact FX at the midpoint */
+      if (window.impactFX) window.impactFX(
+        (a.position.x + b.position.x) / 2,
+        (a.position.y + b.position.y) / 2,
+        Math.min(1, speed / 8)
+      );
       if (window.battleShake) window.battleShake(Math.min(10, speed));
       if (window.blip) window.blip(Math.min(1, speed / 8));
     }
   }
 
+  /* fresh match: tops placed frozen (spinning in place) until launch() */
   function start(pCanvas, eCanvas, ps, es, endCb) {
     if (running) return;
     cleanup();
@@ -643,46 +730,59 @@ const Battle = (() => {
 
     player = makeBlade(ps, S / 2, S * 0.74);
     enemy  = makeBlade(es, S / 2, S * 0.26);
-    Body.setVelocity(player, { x: -3.0, y: -1.6 });
-    Body.setVelocity(enemy,  { x:  3.0, y: 1.6 });
+    player.plugin.statsRef = ps;
+    enemy.plugin.statsRef = es;
     Composite.add(engine.world, [...buildWalls(), player, enemy]);
 
     Events.on(engine, 'collisionStart', onCollision);
 
     inited = true;
+    frozen = true;
     running = true;
     HUD.setMaxes(ps.hp, es.hp);
     raf = requestAnimationFrame(tick);
   }
 
+  /* the rip: launch both tops from their zones */
+  function launch() {
+    if (!inited) return;
+    frozen = false;
+    Body.setVelocity(player, { x: -3.2, y: -1.8 });
+    Body.setVelocity(enemy,  { x:  3.2, y: 1.8 });
+  }
+
   function getState() {
-    if (!inited) return { running: false };
+    if (!inited) return { running: false, frozen: true };
     const bs = (b, key) => ({
       x: b.position.x, y: b.position.y, angle: b.angle,
       vx: b.velocity.x, vy: b.velocity.y,
       spin: spin[key], dash: dash[key] > 0, hp: hp[key],
+      persona: b.plugin.persona,
     });
-    return { running, player: bs(player, 'p'), enemy: bs(enemy, 'e') };
+    return { running, frozen, player: bs(player, 'p'), enemy: bs(enemy, 'e') };
   }
 
-  return { start, getState, arenaSize, S, EXIT_GAPS, personaOf };
+  return { start, launch, getState, arenaSize, S, EXIT_GAPS, RAILS, personaOf };
 })();
 
-/* =================== 3. RENDER: Three.js 3D =================== */
+/* =================== 3. R3D (Three.js) =================== */
 
 const R3D = (() => {
-  if (!window.THREE) return { start() {}, stop() {} };
+  if (!window.THREE) return { start() {}, stop() {}, celebrate() {} };
 
-  const S = 1000;
+  const S = 1000;                          // must match Battle.S
   let renderer = null, scene = null, camera = null;
   let topP = null, topE = null;
   let pStats = null, eStats = null;
-  let raf = null, running = false;
+  let raf = null, mode = 'idle';
+  let introT0 = 0, endT0 = 0, introStage = 0;
+  let endWinner = 'p', endFinish = 'burst';
   let shake = 0, fovKick = 0;
-  const BASE_FOV = 52;                        // wider fov = punchier 3D
-  /* lower, more cinematic camera (more tilt = more depth visible) */
+  const BASE_FOV = 52;
   const CAM_DIR = new THREE.Vector3(0, 0.66, 1.0).normalize();
   let camDist = 1500;
+
+  /* ---------- tiny synth sounds are in MAIN; FX helpers below ---------- */
 
   function gridTexture() {
     const c = document.createElement('canvas');
@@ -697,6 +797,7 @@ const R3D = (() => {
     return t;
   }
 
+  /* tint the white drawing into team color, circular crop, guide ring */
   function artTexture(srcCanvas, color) {
     const c = document.createElement('canvas');
     c.width = c.height = 512;
@@ -710,9 +811,11 @@ const R3D = (() => {
     x.strokeStyle = 'rgba(255,255,255,.9)';
     x.lineWidth = 12;
     x.beginPath(); x.arc(256, 256, 246, 0, 7); x.stroke();
-    return new THREE.CanvasTexture(c);
+    const t = new THREE.CanvasTexture(c);
+    return t;
   }
 
+  /* ---------- the stadium (Beyblade X square Xtreme dish) ---------- */
   function buildStadium() {
     const dish = new THREE.Group();
 
@@ -742,6 +845,7 @@ const R3D = (() => {
     centre.position.y = 0.6;
     dish.add(centre);
 
+    /* slanted walls, north wall split around the exit gaps */
     const wallMat = new THREE.MeshStandardMaterial({ color: 0xf7f9fb, roughness: 0.4, metalness: 0.05 });
     const mkWall = (w, x, z, rx, rz) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, 100, 30), wallMat);
@@ -760,6 +864,7 @@ const R3D = (() => {
     for (const [a, b] of spans)
       mkWall(b - a, (a + b) / 2 - S / 2, -S / 2 + 6, 0.35, 0);
 
+    /* exit pads: orange over-zones, red xtreme zone */
     for (const [a, b] of Battle.EXIT_GAPS) {
       const wide = (b - a) > 150;
       const pad = new THREE.Mesh(
@@ -774,6 +879,7 @@ const R3D = (() => {
       dish.add(pad);
     }
 
+    /* THE X-CELERATOR RAIL */
     const railMat = new THREE.MeshStandardMaterial({
       color: 0x00b894, roughness: 0.25, metalness: 0.35,
       emissive: 0x00b894, emissiveIntensity: 0.18,
@@ -798,8 +904,7 @@ const R3D = (() => {
     scene.add(ground);
   }
 
-  /* ---- silhouette tracing: the blade becomes the EXACT drawn shape ---- */
-
+  /* ---------- silhouette tracing: blade = the EXACT drawn shape ---------- */
   function outlineLoops(canvas) {
     const { mask, W, H } = getMask(canvas);
     const edges = [];
@@ -876,34 +981,34 @@ const R3D = (() => {
     return inside;
   }
 
-  /* build the top: the drawn silhouette(s) extruded into 3D,
-     spinning around the ink's centre of mass */
-  function buildTop(artCanvas, color, stats) {
+  /* ---------- the top: authentic three-part build ----------
+     Blade   : the drawn silhouette, extruded (gear chip on top)
+     Ratchet : protrusion count + height by type (like 3-60 / 5-80)
+     Bit     : tip shape decides movement (flat/ball/needle/taper) */
+  function buildTop(artCanvas, color, accent, stats) {
     const g = new THREE.Group();
+    const persona = Battle.personaOf(stats);
 
     const artTex = artTexture(artCanvas, color);
     artTex.wrapS = artTex.wrapT = THREE.RepeatWrapping;
     artTex.repeat.set(1 / 320, 1 / 320);   // cap UVs are raw canvas px
     artTex.flipY = false;
-    artTex.anisotropy = 4;
     const capMat = new THREE.MeshStandardMaterial({ map: artTex, roughness: 0.35, metalness: 0.3 });
     const sideMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: 0.3, metalness: 0.45 });
 
+    /* --- BLADE: drawn silhouette(s) --- */
     const spinGroup = new THREE.Group();
-    const ox = (stats.mx || 160), oy = (stats.my || 160);
+    const ox = stats.mx || 160, oy = stats.my || 160;
 
     const loops = outlineLoops(artCanvas)
       .map(pts => ({ pts, area: Math.abs(polyArea(pts)) }))
       .sort((a, b) => b.area - a.area);
-
-    /* loops inside bigger loops become real holes (donut blades!) */
     const roots = [];
     for (const o of loops) {
       const host = loops.find(x => x !== o && x.area > o.area && pointIn(o.pts[0], x.pts));
       if (host) (host.holes = host.holes || []).push(o.pts);
       else roots.push(o);
     }
-
     for (const o of roots.slice(0, 12)) {
       const shape = new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0], p[1])));
       for (const h of (o.holes || []))
@@ -914,30 +1019,125 @@ const R3D = (() => {
       });
       const mesh = new THREE.Mesh(geo, [capMat, sideMat]);
       mesh.castShadow = true;
-      mesh.rotation.x = Math.PI / 2;         // lay flat; canvas y -> world z
-      mesh.position.set(-ox, 46, -oy);       // spin around centre of mass
+      mesh.rotation.x = Math.PI / 2;
+      mesh.position.set(-ox, 46, -oy);       // spin around the ink's centre of mass
       spinGroup.add(mesh);
     }
 
-    const ratchet = new THREE.Mesh(
-      new THREE.CylinderGeometry(20, 23, 16, 32),
-      new THREE.MeshStandardMaterial({ color: 0x2d3436, roughness: 0.5, metalness: 0.4 })
+    /* --- GEAR CHIP: spinning emblem in the blade centre --- */
+    const chip = new THREE.Mesh(
+      new THREE.CylinderGeometry(11, 11, 5, 24),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), roughness: 0.25, metalness: 0.7 })
     );
-    ratchet.position.y = 25;
-    ratchet.castShadow = true;
+    chip.position.set(-ox, 62, -oy);
+    chip.castShadow = true;
 
-    const tip = new THREE.Mesh(
-      new THREE.ConeGeometry(12, 22, 24),
-      new THREE.MeshStandardMaterial({ color: 0x8395a7, roughness: 0.25, metalness: 0.85 })
+    /* --- RATCHET: protrusions + height by type --- */
+    /* attack: 3-sided low | balance: 4 mid | defense: 5 tall | stamina: 6 low */
+    const profs = { attack: 3, balance: 4, defense: 5, stamina: 6 };
+    const rheis = { attack: 12, balance: 18, stamina: 14, defense: 24 };
+    const prof = profs[persona], rh = rheis[persona];
+    const rr = Math.max(15, stats.r * 0.32);
+    const ratchetMat = new THREE.MeshStandardMaterial({ color: 0x454e57, roughness: 0.35, metalness: 0.65 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x2d3436, roughness: 0.5, metalness: 0.4 });
+
+    const hexA = new THREE.Mesh(new THREE.CylinderGeometry(rr, rr * 1.06, rh, prof), ratchetMat);
+    hexA.position.y = 18 - rh / 2;
+    hexA.castShadow = true;
+
+    const ring = new THREE.Mesh(
+      new THREE.CylinderGeometry(rr * 1.1, rr * 1.1, 3.5, prof),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), roughness: 0.3, metalness: 0.6, emissive: new THREE.Color(accent), emissiveIntensity: 0.25 })
     );
-    tip.rotation.x = Math.PI;
-    tip.position.y = 9;
+    ring.position.y = 18 - rh + 1.5;
 
-    g.add(spinGroup, ratchet, tip);
-    g.userData = { spin: spinGroup, capMat, sideMat };
+    const hexB = new THREE.Mesh(new THREE.CylinderGeometry(rr * 0.66, rr * 0.7, rh * 0.55, prof), darkMat);
+    hexB.position.y = 18 - rh * 0.32;
+    hexB.castShadow = true;
+
+    /* --- BIT: tip shape by type (flat/ball/needle/taper) --- */
+    const bitTop = 18 - rh;                 // underside of the ratchet
+    const bitH = Math.max(10, bitTop - 2);  // down to the dish floor
+    let bit;
+    if (persona === 'attack') {
+      /* FLAT: wide rubber tip, aggressive movement */
+      bit = new THREE.Mesh(
+        new THREE.CylinderGeometry(rr * 0.52, rr * 0.58, bitH * 0.6, 20),
+        new THREE.MeshStandardMaterial({ color: 0x23272c, roughness: 0.95, metalness: 0.0 })
+      );
+      bit.position.y = bitTop - bitH * 0.3;
+    } else if (persona === 'defense') {
+      /* BALL: squashed sphere, stays central */
+      bit = new THREE.Mesh(
+        new THREE.SphereGeometry(Math.min(14, rr * 0.55), 24, 16),
+        new THREE.MeshStandardMaterial({ color: 0xb2bec3, roughness: 0.3, metalness: 0.7 })
+      );
+      bit.scale.y = 0.78;
+      bit.position.y = bitTop - bitH * 0.28;
+    } else if (persona === 'stamina') {
+      /* NEEDLE: sharp point, maximum stamina */
+      bit = new THREE.Mesh(
+        new THREE.ConeGeometry(rr * 0.22, bitH, 16),
+        new THREE.MeshStandardMaterial({ color: 0x8395a7, roughness: 0.2, metalness: 0.9 })
+      );
+      bit.rotation.x = Math.PI;
+      bit.position.y = bitTop - bitH / 2;
+    } else {
+      /* TAPER: truncated cone, the hybrid */
+      bit = new THREE.Mesh(
+        new THREE.CylinderGeometry(rr * 0.2, rr * 0.5, bitH, 20),
+        new THREE.MeshStandardMaterial({ color: 0x9aa7b4, roughness: 0.3, metalness: 0.75 })
+      );
+      bit.position.y = bitTop - bitH / 2;
+    }
+    bit.castShadow = true;
+
+    /* gear disc under the bit: what catches the X-rail */
+    const gear = new THREE.Mesh(
+      new THREE.CylinderGeometry(rr * 0.62, rr * 0.62, 3, prof * 4),
+      new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3, metalness: 0.85 })
+    );
+    gear.position.y = bitTop - bitH * 0.72;
+
+    g.add(spinGroup, chip, hexA, ring, hexB, bit, gear);
+    g.userData = { spin: spinGroup, capMat, hexB, chip, persona };
     return g;
   }
 
+  /* ---------- impact spark pool ---------- */
+  const sparks = [];
+  function initSparks() {
+    const geo = new THREE.RingGeometry(5, 9, 24);
+    for (let i = 0; i < 10; i++) {
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: 0xfff3b0, transparent: true, opacity: 0,
+        side: THREE.DoubleSide, depthWrite: false,
+      }));
+      m.rotation.x = -Math.PI / 2;
+      m.visible = false;
+      scene.add(m);
+      sparks.push({ mesh: m, life: 0, pow: 1 });
+    }
+  }
+  window.impactFX = (wx, wy, pow) => {
+    const s = sparks.find(s => s.life <= 0);
+    if (!s) return;
+    s.life = 1; s.pow = pow;
+    s.mesh.position.set(wx - S / 2, 42, wy - S / 2);
+    s.mesh.visible = true;
+  };
+  function updateSparks() {
+    for (const s of sparks) {
+      if (s.life <= 0) continue;
+      s.life -= 0.055;
+      const k = 1 - s.life;
+      s.mesh.scale.setScalar(1 + k * (10 + s.pow * 10));
+      s.mesh.material.opacity = Math.max(0, s.life) * 0.85;
+      if (s.life <= 0) s.mesh.visible = false;
+    }
+  }
+
+  /* ---------- camera ---------- */
   function autoFit() {
     const corners = [
       new THREE.Vector3(-S / 2, 0, -S / 2), new THREE.Vector3(S / 2, 0, -S / 2),
@@ -959,30 +1159,30 @@ const R3D = (() => {
     }
   }
 
-  function placeCamera(midX, midZ, t) {
-    const m = Math.min(1, shake);
-    const swayX = Math.sin(t * 0.00035) * 26;   // gentle living camera
-    const swayZ = Math.cos(t * 0.00028) * 20;
-    camera.position.set(
-      CAM_DIR.x * camDist + midX * 0.12 + swayX + (Math.random() - 0.5) * m * 10,
-      CAM_DIR.y * camDist + (Math.random() - 0.5) * m * 8,
-      CAM_DIR.z * camDist + midZ * 0.10 + swayZ + (Math.random() - 0.5) * m * 10
-    );
-    camera.fov = BASE_FOV + fovKick;
-    camera.updateProjectionMatrix();
-    camera.lookAt(midX * 0.12, 0, -30 + midZ * 0.10);
-    shake *= 0.88;
+  function camBasePos() {
+    return {
+      x: CAM_DIR.x * camDist,
+      y: CAM_DIR.y * camDist,
+      z: CAM_DIR.z * camDist,
+    };
   }
 
+  /* ---------- per-frame top placement ---------- */
   function placeTop(mesh, st, stats, dir, t) {
     if (!st) return;
     mesh.position.x = st.x - S / 2;
     mesh.position.z = st.y - S / 2;
-    mesh.userData.spin.rotation.y += dir * st.spin * 2.2;
 
+    /* spin layers: blade one way, ratchet core + gear chip the other */
+    mesh.userData.spin.rotation.y += dir * st.spin * 2.2;
+    mesh.userData.hexB.rotation.y -= dir * st.spin * 1.4;
+    mesh.userData.chip.rotation.y -= dir * 0.6;
+
+    /* wobble tilt for unbalanced art */
     mesh.rotation.x = Math.sin(t * 0.021) * stats.wobble * 0.22;
     mesh.rotation.z = Math.cos(t * 0.017) * stats.wobble * 0.22;
 
+    /* dash hop + glow */
     const targetY = st.dash ? 34 + Math.sin(t * 0.02) * 6 : 0;
     mesh.position.y += (targetY - mesh.position.y) * 0.2;
     if (st.dash) {
@@ -993,25 +1193,96 @@ const R3D = (() => {
     }
   }
 
+  /* ---------- main render loop with mode direction ---------- */
   function loop() {
-    if (!running) return;
+    if (mode === 'idle') return;
     raf = requestAnimationFrame(loop);
     const st = Battle.getState();
     const t = performance.now();
 
     placeTop(topP, st.player, pStats, -1, t);
     placeTop(topE, st.enemy, eStats, 1, t);
+    updateSparks();
 
-    const anyDash = (st.player && st.player.dash) || (st.enemy && st.enemy.dash);
-    fovKick += ((anyDash ? 9 : 0) - fovKick) * 0.12;
+    if (mode === 'intro') {
+      /* camera sweeps around the stadium while the countdown runs */
+      const k = Math.min(1, (t - introT0) / 2600);
+      const a = (1 - k) * Math.PI * 2;
+      const F = camBasePos();
+      camera.position.set(
+        Math.sin(a) * F.z,
+        F.y * 1.02 + Math.sin(k * Math.PI) * 60,
+        Math.cos(a) * F.z
+      );
+      camera.fov = BASE_FOV + 6 * (1 - k);
+      camera.updateProjectionMatrix();
+      camera.lookAt(0, 0, -30);
 
-    const midX = st.player && st.enemy ? ((st.player.x + st.enemy.x) / 2 - S / 2) * 0.9 : 0;
-    const midZ = st.player && st.enemy ? ((st.player.y + st.enemy.y) / 2 - S / 2) * 0.9 : 0;
-    placeCamera(midX, midZ, t);
+      if (introStage === 0 && k >= 0.02) { introStage = 1; if (window.onCount) window.onCount('3'); }
+      if (introStage === 1 && k >= 0.36) { introStage = 2; if (window.onCount) window.onCount('2'); }
+      if (introStage === 2 && k >= 0.68) { introStage = 3; if (window.onCount) window.onCount('1'); }
+      if (k >= 1) {
+        mode = 'battle';
+        introStage = 0;
+        if (window.onIntroDone) window.onIntroDone();
+      }
+    } else if (mode === 'battle') {
+      const anyDash = (st.player && st.player.dash) || (st.enemy && st.enemy.dash);
+      fovKick += ((anyDash ? 9 : 0) - fovKick) * 0.12;
+
+      const m = Math.min(1, shake);
+      const swayX = Math.sin(t * 0.00035) * 26;
+      const swayZ = Math.cos(t * 0.00028) * 20;
+      const F = camBasePos();
+      const midX = st.player && st.enemy ? ((st.player.x + st.enemy.x) / 2 - S / 2) * 0.9 : 0;
+      const midZ = st.player && st.enemy ? ((st.player.y + st.enemy.y) / 2 - S / 2) * 0.9 : 0;
+      camera.position.set(
+        F.x + midX * 0.12 + swayX + (Math.random() - 0.5) * m * 10,
+        F.y + (Math.random() - 0.5) * m * 8,
+        F.z + midZ * 0.10 + swayZ + (Math.random() - 0.5) * m * 10
+      );
+      camera.fov = BASE_FOV + fovKick;
+      camera.updateProjectionMatrix();
+      camera.lookAt(midX * 0.12, 0, -30 + midZ * 0.10);
+      shake *= 0.88;
+    } else if (mode === 'end') {
+      /* slow push-in on the winner; loser keels over */
+      const k = Math.min(1, (t - endT0) / 1400);
+      const ease = 1 - Math.pow(1 - k, 3);
+      const win = endWinner === 'p' ? topP : topE;
+      const lose = endWinner === 'p' ? topE : topP;
+      if (win) {
+        const target = { x: win.position.x + 110, y: 150, z: win.position.z + 130 };
+        const F = camBasePos();
+        camera.position.set(
+          F.x + (target.x - F.x) * ease,
+          F.y + (target.y - F.y) * ease,
+          F.z + (target.z - F.z) * ease
+        );
+        camera.lookAt(win.position.x, 20, win.position.z);
+        win.userData.spin.rotation.y += 0.55;
+        win.userData.hexB.rotation.y -= 0.35;
+      }
+      if (lose && endFinish !== 'over' && endFinish !== 'xtreme') {
+        lose.rotation.z += (0.85 - lose.rotation.z) * 0.08;
+        lose.position.y += (6 - lose.position.y) * 0.08;
+      }
+      if (k >= 1 && win) {
+        /* gentle victory orbit */
+        const a = (t - endT0 - 1400) * 0.0005;
+        camera.position.set(
+          win.position.x + Math.sin(a) * 210,
+          170,
+          win.position.z + Math.cos(a) * 210
+        );
+        camera.lookAt(win.position.x, 20, win.position.z);
+      }
+    }
 
     renderer.render(scene, camera);
   }
 
+  /* ---------- lifecycle ---------- */
   function initScene() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xdfe4ea);
@@ -1030,6 +1301,7 @@ const R3D = (() => {
     scene.add(sun);
 
     buildStadium();
+    initSparks();
   }
 
   function start(playerCanvas, enemyCanvas, ps, es) {
@@ -1052,8 +1324,8 @@ const R3D = (() => {
     }
     if (topP) scene.remove(topP);
     if (topE) scene.remove(topE);
-    topP = buildTop(playerCanvas, '#3b9dff', ps);
-    topE = buildTop(enemyCanvas, '#ff6a3d', es);
+    topP = buildTop(playerCanvas, '#3b9dff', '#8ecbff', ps);
+    topE = buildTop(enemyCanvas, '#ff6a3d', '#ffc48a', es);
     scene.add(topP, topE);
 
     renderer.setSize(size, size);
@@ -1063,23 +1335,33 @@ const R3D = (() => {
     wrap.appendChild(renderer.domElement);
     autoFit();
 
-    running = true;
+    mode = 'intro';
+    introT0 = performance.now();
+    introStage = 0;
     shake = 0; fovKick = 0;
+    for (const s of sparks) { s.life = 0; s.mesh.visible = false; }
     if (raf) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(loop);
   }
 
+  function celebrate(winnerKey, finish) {
+    endWinner = winnerKey;
+    endFinish = finish;
+    endT0 = performance.now();
+    mode = 'end';
+  }
+
   function stop() {
-    running = false;
+    mode = 'idle';
     if (raf) cancelAnimationFrame(raf);
   }
 
   window.battleShake = (v) => { shake = Math.min(1.4, shake + v * 0.09); };
 
-  return { start, stop };
+  return { start, stop, celebrate };
 })();
 
-/* =================== 4. MAIN: UI glue =================== */
+/* =================== 4. MAIN (UI glue) =================== */
 
 const hpP = document.getElementById('hpPlayer');
 const hpE = document.getElementById('hpEnemy');
@@ -1097,18 +1379,70 @@ window.HUD = {
   },
 };
 
+/* ---------- sounds (WebAudio, no assets) ---------- */
 let AC = null;
-window.blip = (intensity = 1) => {
+function ac() {
   try {
     AC = AC || new (window.AudioContext || window.webkitAudioContext)();
-    const o = AC.createOscillator(), g = AC.createGain();
+    if (AC.state === 'suspended') AC.resume();
+    return AC;
+  } catch (e) { return null; }
+}
+window.blip = (intensity = 1) => {
+  const ctx = ac(); if (!ctx) return;
+  try {
+    const o = ctx.createOscillator(), g = ctx.createGain();
     o.type = 'square';
     o.frequency.value = 140 + 260 * intensity + Math.random() * 40;
-    g.gain.setValueAtTime(0.06, AC.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + 0.09);
-    o.connect(g); g.connect(AC.destination);
-    o.start(); o.stop(AC.currentTime + 0.1);
+    g.gain.setValueAtTime(0.06, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.09);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.1);
+    const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+    o2.type = 'sine';
+    o2.frequency.value = 70 + 60 * intensity;
+    g2.gain.setValueAtTime(0.09, ctx.currentTime);
+    g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
+    o2.connect(g2); g2.connect(ctx.destination);
+    o2.start(); o2.stop(ctx.currentTime + 0.15);
   } catch (e) {}
+};
+function tick() {
+  const ctx = ac(); if (!ctx) return;
+  try {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    g.gain.setValueAtTime(0.05, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.09);
+  } catch (e) {}
+}
+function whoosh() {
+  const ctx = ac(); if (!ctx) return;
+  try {
+    const len = Math.floor(ctx.sampleRate * 0.35);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.22, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    src.connect(f); f.connect(g); g.connect(ctx.destination);
+    src.start();
+  } catch (e) {}
+}
+
+/* ---------- countdown + dash flash ---------- */
+const countText = document.getElementById('countText');
+window.onCount = (txt) => {
+  countText.textContent = txt;
+  countText.classList.remove('pop');
+  void countText.offsetWidth;
+  countText.classList.add('pop');
+  tick();
 };
 
 const dashFlash = document.getElementById('dashFlash');
@@ -1120,7 +1454,22 @@ window.onXtreme = () => {
   if (window.battleShake) window.battleShake(6);
 };
 
-/* drawing canvas */
+window.onIntroDone = () => {
+  countText.textContent = 'LET IT RIP!';
+  countText.classList.remove('pop');
+  void countText.offsetWidth;
+  countText.classList.add('pop');
+  whoosh();
+  Battle.launch();
+};
+
+window.onMatchEnd = (result) => {
+  R3D.celebrate(result.winner === 'player' ? 'p' : 'e', result.finish);
+  if (result.finish === 'burst') whoosh();
+  if (result.finish === 'over' || result.finish === 'xtreme') whoosh();
+};
+
+/* ---------- drawing canvas ---------- */
 const drawCanvas = document.getElementById('drawCanvas');
 const dctx = drawCanvas.getContext('2d');
 dctx.lineWidth = 16;
@@ -1163,6 +1512,7 @@ drawCanvas.addEventListener('pointermove', (e) => {
 const stopDraw = () => { drawing = false; };
 drawCanvas.addEventListener('pointerup', stopDraw);
 drawCanvas.addEventListener('pointercancel', stopDraw);
+drawCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 /* live stat preview */
 const barHp  = document.getElementById('barHp');
@@ -1181,16 +1531,16 @@ function previewSoon() {
   requestAnimationFrame(() => { queued = false; preview(); });
 }
 
-/* screens */
-const modeScreen     = document.getElementById('modeScreen');
-const drawScreen     = document.getElementById('drawScreen');
-const battleScreen   = document.getElementById('battleScreen');
-const resultOverlay  = document.getElementById('resultOverlay');
-const resultText     = document.getElementById('resultText');
-const resultSub      = document.getElementById('resultSub');
-const drawTitle      = document.getElementById('drawTitle');
-const nameLeft       = document.getElementById('nameLeft');
-const nameRight      = document.getElementById('nameRight');
+/* ---------- screens ---------- */
+const modeScreen    = document.getElementById('modeScreen');
+const drawScreen    = document.getElementById('drawScreen');
+const battleScreen  = document.getElementById('battleScreen');
+const resultOverlay = document.getElementById('resultOverlay');
+const resultText    = document.getElementById('resultText');
+const resultSub     = document.getElementById('resultSub');
+const drawTitle     = document.getElementById('drawTitle');
+const nameLeft      = document.getElementById('nameLeft');
+const nameRight     = document.getElementById('nameRight');
 
 function show(el) {
   modeScreen.classList.remove('active');
@@ -1200,17 +1550,21 @@ function show(el) {
 }
 
 /* ---------- game modes ---------- */
-let mode = 'bot';            // 'bot' | 'friend'
-let whoseTurn = 1;           // friend mode: 1 or 2
+let mode = 'bot';
+let whoseTurn = 1;
+let busy = false;
 const botCanvas = document.createElement('canvas');
 botCanvas.width = botCanvas.height = 320;
-let p1Canvas = null;         // stored P1 art in friend mode
+let p1Canvas = null;
 let lastP1Canvas = null, lastEnemyCanvas = null;
 let lastP1Stats = null, lastEnemyStats = null;
+
+const TYPE_ICON = { attack: '\u2694\uFE0F', defense: '\u{1F6E1}\uFE0F', stamina: '\u{1F300}', balance: '\u2696\uFE0F' };
 
 function startMode(m) {
   mode = m;
   whoseTurn = 1;
+  busy = false;
   drawTitle.textContent = m === 'friend' ? 'PLAYER 1 -- DRAW YOUR BLADE' : 'DRAW YOUR BLADE';
   dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
   makeRandomBlade(drawCanvas);
@@ -1218,13 +1572,11 @@ function startMode(m) {
   show(drawScreen);
 }
 
-const TYPE_ICON = { attack: '\u2694\uFE0F', defense: '\u{1F6E1}\uFE0F', stamina: '\u{1F300}', balance: '\u2696\uFE0F' };
-
 function fight() {
+  if (busy) return;
   let pStats = analyzeBlade(drawCanvas);
 
   if (mode === 'friend' && whoseTurn === 1) {
-    /* hand the pen to player 2 */
     p1Canvas = cloneCanvas(drawCanvas);
     whoseTurn = 2;
     drawTitle.textContent = 'PLAYER 2 -- DRAW YOUR BLADE';
@@ -1242,7 +1594,7 @@ function fight() {
 
   let enemyCanvas, eStats;
   if (mode === 'friend') {
-    enemyCanvas = cloneCanvas(drawCanvas);      // P2's art
+    enemyCanvas = cloneCanvas(drawCanvas);
     eStats = analyzeBlade(enemyCanvas);
   } else {
     makeRandomBlade(botCanvas);
@@ -1250,7 +1602,7 @@ function fight() {
     eStats = analyzeBlade(botCanvas);
   }
 
-  lastP1Canvas = (mode === 'friend') ? cloneCanvas(p1Canvas) : cloneCanvas(drawCanvas);
+  lastP1Canvas = cloneCanvas(mode === 'friend' ? p1Canvas : drawCanvas);
   lastP1Stats = pStats;
   lastEnemyCanvas = cloneCanvas(enemyCanvas);
   lastEnemyStats = eStats;
@@ -1258,10 +1610,15 @@ function fight() {
   nameLeft.textContent  = (mode === 'friend' ? 'P1' : 'YOU') + ' ' + TYPE_ICON[Battle.personaOf(pStats)];
   nameRight.textContent = (mode === 'friend' ? 'P2' : 'BOT') + ' ' + TYPE_ICON[Battle.personaOf(eStats)];
 
+  busy = true;
   resultOverlay.classList.add('hidden');
+  countText.textContent = '';
   show(battleScreen);
-  Battle.start(lastP1Canvas, lastEnemyCanvas, pStats, eStats, onBattleEnd);
-  R3D.start(lastP1Canvas, lastEnemyCanvas, pStats, eStats);
+  /* slight delay so the screen fade starts before the camera sweep */
+  setTimeout(() => {
+    Battle.start(lastP1Canvas, lastEnemyCanvas, lastP1Stats, lastEnemyStats, onBattleEnd);
+    R3D.start(lastP1Canvas, lastEnemyCanvas, lastP1Stats, lastEnemyStats);
+  }, 250);
 }
 
 const FINISH_TEXT = {
@@ -1273,6 +1630,7 @@ const FINISH_TEXT = {
 
 function onBattleEnd(result) {
   R3D.stop();
+  busy = false;
   const youWon = result.winner === 'player';
   const draw = result.winner === 'draw';
   resultText.textContent = draw ? 'DRAW!' : FINISH_TEXT[result.finish] || 'FINISH!';
@@ -1290,7 +1648,7 @@ function onBattleEnd(result) {
   resultOverlay.classList.remove('hidden');
 }
 
-/* buttons */
+/* ---------- buttons ---------- */
 document.getElementById('btnVsBot').addEventListener('click', () => startMode('bot'));
 document.getElementById('btnVsFriend').addEventListener('click', () => startMode('friend'));
 document.getElementById('btnClear').addEventListener('click', () => {
@@ -1310,12 +1668,18 @@ document.getElementById('btnNewBlade').addEventListener('click', () => {
   show(drawScreen);
 });
 document.getElementById('btnRematch').addEventListener('click', () => {
+  if (busy) return;
+  busy = true;
   resultOverlay.classList.add('hidden');
-  Battle.start(lastP1Canvas, lastEnemyCanvas, lastP1Stats, lastEnemyStats, onBattleEnd);
-  R3D.start(lastP1Canvas, lastEnemyCanvas, lastP1Stats, lastEnemyStats);
+  countText.textContent = '';
+  show(battleScreen);
+  setTimeout(() => {
+    Battle.start(lastP1Canvas, lastEnemyCanvas, lastP1Stats, lastEnemyStats, onBattleEnd);
+    R3D.start(lastP1Canvas, lastEnemyCanvas, lastP1Stats, lastEnemyStats);
+  }, 250);
 });
 
-/* boot */
+/* ---------- boot ---------- */
 makeRandomBlade(drawCanvas);
 preview();
 </script>
