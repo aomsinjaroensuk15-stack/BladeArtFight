@@ -406,16 +406,16 @@ function cloneCanvas(src) {
 const Battle = (() => {
   const { Engine, Bodies, Body, Composite, Events, Vector } = Matter;
 
-  const S = 1000;                       // stadium side, world units
+  const S = 1600;                       // stadium side, world units
   const WALL_T = 60;
   const RAIL_W = 62;                    // X-rail catch width
   const DASH_TICKS = 45;
   /* exit gaps in the north wall: two Over Zones + wide Xtreme Zone */
-  const EXIT_GAPS = [ [175, 265], [415, 585], [735, 825] ];
+  const EXIT_GAPS = [ [300, 400], [700, 900], [1200, 1300] ];
   /* the X-Celerator rails, corner to corner */
   const RAILS = [
-    { ax: 70,  ay: 70,  bx: 930, by: 930 },
-    { ax: 930, ay: 70,  bx: 70,  by: 930 },
+    { ax: 80,   ay: 80,   bx: 1520, by: 1520 },
+    { ax: 1520, ay: 80,   bx: 80,   by: 1520 },
   ];
 
   let engine = null, raf = null;
@@ -513,7 +513,7 @@ const Battle = (() => {
     clampSpeed(b, 8.5);
     spin[key] = Math.min(1, spin[key] + 0.004);     // gears feed spin back
     const L = Math.hypot(S / 2 - b.position.x, S / 2 - b.position.y);
-    if (L < 150 && dash[key] <= 0) {
+    if (L < 240 && dash[key] <= 0) {
       dash[key] = DASH_TICKS;
       if (window.onXtreme) window.onXtreme(key);
     }
@@ -567,22 +567,22 @@ const Battle = (() => {
       /* hold the centre in a tight circle; poke only when approached */
       cap = 4.0;
       const dc = Math.hypot(self.position.x - S / 2, self.position.y - S / 2) || 1;
-      const hf = dc > 130 ? 0.050 : 0.018;
+      const hf = dc > 200 ? 0.050 : 0.018;
       Body.applyForce(self, self.position, {
         x: ((S / 2 - self.position.x) / dc) * hf * self.mass,
         y: ((S / 2 - self.position.y) / dc) * hf * self.mass,
       });
-      if (dist < 220 && --self.plugin.curCd <= 0) { self.plugin.nudge = 22; self.plugin.curCd = 160 + Math.random() * 140; }
+      if (dist < 320 && --self.plugin.curCd <= 0) { self.plugin.nudge = 22; self.plugin.curCd = 160 + Math.random() * 140; }
     } else {
       /* stamina: cruise a slow ring around the middle of the stadium */
       cap = 5.0;
       const t = engine.timing.timestamp * 0.0012 + self.plugin.wobPh;
-      const tx = S / 2 + Math.cos(t) * 210;
-      const ty = S / 2 + Math.sin(t) * 210;
+      const tx = S / 2 + Math.cos(t) * 340;
+      const ty = S / 2 + Math.sin(t) * 340;
       const dx = tx - self.position.x, dy = ty - self.position.y;
       const dd = Math.hypot(dx, dy) || 1;
       Body.applyForce(self, self.position, { x: (dx / dd) * 0.030 * self.mass, y: (dy / dd) * 0.030 * self.mass });
-      if (dist > 140 && --self.plugin.curCd <= 0) { self.plugin.nudge = 22; self.plugin.curCd = 210 + Math.random() * 170; }
+      if (dist > 220 && --self.plugin.curCd <= 0) { self.plugin.nudge = 22; self.plugin.curCd = 210 + Math.random() * 170; }
     }
 
     /* a triggered nudge: brief curve toward the opponent */
@@ -630,8 +630,8 @@ const Battle = (() => {
     dash.p = Math.max(0, dash.p - 1);
     dash.e = Math.max(0, dash.e - 1);
 
-    spin.p = Math.max(0, spin.p - 0.00045 * (1.7 - pStats.bal) * (1 + pStats.wobble));
-    spin.e = Math.max(0, spin.e - 0.00045 * (1.7 - eStats.bal) * (1 + eStats.wobble));
+    spin.p = Math.max(0, spin.p - 0.00020 * (1.7 - pStats.bal) * (1 + pStats.wobble));
+    spin.e = Math.max(0, spin.e - 0.00020 * (1.7 - eStats.bal) * (1 + eStats.wobble));
     Body.setAngularVelocity(player, -0.36 * spin.p);
     Body.setAngularVelocity(enemy,  0.36 * spin.e);
 
@@ -693,16 +693,16 @@ const Battle = (() => {
       const aDash = (a === player ? dash.p : dash.e) > 0;
       const bDash = (b === player ? dash.p : dash.e) > 0;
 
-      const dmgToA = Math.min(60, b.plugin.statsRef.atk * speed * 0.085 * (bDash ? 2.2 : 1));
-      const dmgToB = Math.min(60, a.plugin.statsRef.atk * speed * 0.085 * (aDash ? 2.2 : 1));
+      const dmgToA = Math.min(30, b.plugin.statsRef.atk * speed * 0.028 * (bDash ? 2.2 : 1));
+      const dmgToB = Math.min(30, a.plugin.statsRef.atk * speed * 0.028 * (aDash ? 2.2 : 1));
       hp[a === player ? 'p' : 'e'] -= dmgToA;
       hp[b === player ? 'p' : 'e'] -= dmgToB;
 
       if (bDash) Body.setVelocity(a, { x: a.velocity.x + b.velocity.x * 0.9, y: a.velocity.y + b.velocity.y * 0.9 });
       if (aDash) Body.setVelocity(b, { x: b.velocity.x + a.velocity.x * 0.9, y: b.velocity.y + a.velocity.y * 0.9 });
 
-      spin.p = Math.max(0, spin.p - speed * 0.012);
-      spin.e = Math.max(0, spin.e - speed * 0.012);
+      spin.p = Math.max(0, spin.p - speed * 0.006);
+      spin.e = Math.max(0, spin.e - speed * 0.006);
 
       /* impact FX at the midpoint */
       if (window.impactFX) window.impactFX(
@@ -770,7 +770,7 @@ const Battle = (() => {
 const R3D = (() => {
   if (!window.THREE) return { start() {}, stop() {}, celebrate() {} };
 
-  const S = 1000;                          // must match Battle.S
+  const S = 1600;                          // must match Battle.S
   let renderer = null, scene = null, camera = null;
   let topP = null, topE = null;
   let pStats = null, eStats = null;
@@ -1286,7 +1286,7 @@ const R3D = (() => {
   function initScene() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xdfe4ea);
-    scene.fog = new THREE.Fog(0xdfe4ea, 1600, 5200);
+    scene.fog = new THREE.Fog(0xdfe4ea, 2400, 8000);
 
     camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 10, 12000);
 
