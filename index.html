@@ -426,6 +426,8 @@ const Battle = (() => {
   let hp = { p: 0, e: 0 };
   let spin = { p: 1, e: 1 };
   let dash = { p: 0, e: 0 };
+  let warmup = 0;                    // ticks after launch before any dash
+  const railT = { p: 0, e: 0 };      // consecutive ticks spent riding the rail
   let onEnd = null;
 
   const arenaSize = () =>
@@ -501,7 +503,8 @@ const Battle = (() => {
   function handleRail(b, key) {
     if (frozen || spin[key] <= 0) return;
     const ri = distToRails(b.position);
-    if (!ri) return;
+    if (!ri) { railT[key] = 0; return; }
+    railT[key]++;
     const dir = {
       x: Math.sign(S / 2 - b.position.x) || 1,
       y: Math.sign(S / 2 - b.position.y) || 1,
@@ -514,7 +517,8 @@ const Battle = (() => {
     clampSpeed(b, 8.5);
     spin[key] = Math.min(1, spin[key] + 0.004);     // gears feed spin back
     const L = Math.hypot(S / 2 - b.position.x, S / 2 - b.position.y);
-    if (L < 240 && dash[key] <= 0) {
+    /* XTREME DASH: needs a sustained rail ride and the warmup over */
+    if (L < 240 && dash[key] <= 0 && warmup <= 0 && railT[key] > 45) {
       dash[key] = DASH_TICKS;
       if (window.onXtreme) window.onXtreme(key);
     }
@@ -561,8 +565,8 @@ const Battle = (() => {
 
     if (P === 'attack') {
       /* constant hunt + periodic hard charges => constant contact */
-      cap = 6.6;
-      Body.applyForce(self, self.position, { x: (d.x / dist) * 0.045 * self.mass, y: (d.y / dist) * 0.045 * self.mass });
+      cap = 6.2;
+      Body.applyForce(self, self.position, { x: (d.x / dist) * 0.038 * self.mass, y: (d.y / dist) * 0.038 * self.mass });
       if (--self.plugin.nudgeCd <= 0) { self.plugin.nudge = 30; self.plugin.nudgeCd = 90 + Math.random() * 120; }
     } else if (P === 'defense') {
       /* hold the centre in a tight circle; poke only when approached */
@@ -588,7 +592,7 @@ const Battle = (() => {
 
     /* a triggered nudge: brief curve toward the opponent */
     if (self.plugin.nudge > 0) {
-      Body.applyForce(self, self.position, { x: (d.x / dist) * 0.055 * self.mass, y: (d.y / dist) * 0.055 * self.mass });
+      Body.applyForce(self, self.position, { x: (d.x / dist) * 0.048 * self.mass, y: (d.y / dist) * 0.048 * self.mass });
       self.plugin.nudge--;
     }
 
@@ -623,6 +627,7 @@ const Battle = (() => {
       return;
     }
 
+    if (warmup > 0) warmup--;
     handleRail(player, 'p');
     handleRail(enemy, 'e');
     freeMove(player, enemy, pStats, 'p');
@@ -752,6 +757,8 @@ const Battle = (() => {
     hp = { p: ps.hp, e: es.hp };
     spin = { p: 1, e: 1 };
     dash = { p: 0, e: 0 };
+    warmup = 200;                    // ~3.3s after the rip: no dashes yet
+    railT.p = 0; railT.e = 0;
 
     engine = Engine.create();
     engine.gravity.y = 0;
@@ -775,8 +782,9 @@ const Battle = (() => {
   function launch() {
     if (!inited) return;
     frozen = false;
-    Body.setVelocity(player, { x: -3.2, y: -1.8 });
-    Body.setVelocity(enemy,  { x:  3.2, y: 1.8 });
+    /* tangential launch: tops enter wide natural orbits, not rail-seeking */
+    Body.setVelocity(player, { x: -4.2, y: 0.8 });
+    Body.setVelocity(enemy,  { x:  4.2, y: -0.8 });
   }
 
   function getState() {
