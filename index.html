@@ -11,7 +11,7 @@
   <!-- ============ DRAW SCREEN ============ -->
   <section id="drawScreen" class="screen active">
     <h1>BLADE<span>ART</span>FIGHT</h1>
-    <p class="tagline">Draw your blade. It fights for you.</p>
+    <p class="tagline">Draw your blade. Ride the X-rail. Xtreme Dash.</p>
 
     <div id="drawWrap">
       <canvas id="drawCanvas" width="320" height="320"></canvas>
@@ -26,7 +26,7 @@
     <div class="btnRow">
       <button id="btnClear"  class="btn ghost">Clear</button>
       <button id="btnRandom" class="btn ghost">&#127922; Random</button>
-      <button id="btnFight"  class="btn primary">FIGHT!</button>
+      <button id="btnFight"  class="btn primary">LET IT RIP!</button>
     </div>
   </section>
 
@@ -46,13 +46,13 @@
       </div>
     </div>
 
-    <div id="arenaWrap">
-      <div id="disc"><i class="ring" style="--r:66%"></i><i class="ring" style="--r:33%"></i></div>
-      <div id="arena"></div>
-    </div>
+    <div id="arenaWrap"></div>
+
+    <div id="dashFlash" class="hidden">XTREME DASH!</div>
 
     <div id="resultOverlay" class="hidden">
       <h2 id="resultText"></h2>
+      <p id="resultSub"></p>
       <div class="btnRow">
         <button id="btnRematch"   class="btn primary">Rematch</button>
         <button id="btnNewBlade"  class="btn ghost">New Blade</button>
@@ -61,8 +61,10 @@
   </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="stats.js"></script>
 <script src="battle.js"></script>
+<script src="render3d.js"></script>
 <script src="main.js"></script>
 </body>
 </html>
