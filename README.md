@@ -5,6 +5,7 @@ Draw your beyblade. Your drawing becomes the blade. Then it fights for you.
 A browser game where the blade you draw with your finger determines your
 stats -- and an autonomous physics battle decides who gets the stadium.
 
+### [fast open](https://aomsinjaroensuk15-stack.github.io/BladeArtFight/)
 Inspired by those 3D spinning-top battle videos. Everything is procedural:
 no art assets, no build step, one HTML file + JS.
 
